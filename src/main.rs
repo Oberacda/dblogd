@@ -94,7 +94,13 @@ fn socket_thread(tx: Sender<TemperatureRecord>, thread_finished: Arc<AtomicBool>
                 continue
             }
         };
-        let recv_data_str_trimmed = recv_data_str.trim_end();
+        let recv_data_str_trimmed = match recv_data_str.trim_end().get(..buf_size) {
+            Option::Some(res) => res,
+            Option::None => {
+                log::warn!(target: "dblogd::udp", "Received invalid packet!");
+                continue;
+            }
+        };
 
         let json_buf_record = match serde_json::from_str::<TemperatureRecord>(recv_data_str_trimmed) {
             Ok(result) => result,
@@ -114,7 +120,7 @@ fn socket_thread(tx: Sender<TemperatureRecord>, thread_finished: Arc<AtomicBool>
 }
 
 fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<AtomicBool>) {
-    let database_connection = match Connection::connect("postgresql://home_user_default:temperature@raspberry3.local:5432/home-test-dev", TlsMode::None)
+    let database_connection = match Connection::connect("postgresql://u_home_client:temperature@raspberry3.local:5432/home_dev?application_name=dblogd", TlsMode::None)
         {
             Ok(conn) => conn,
             Err(err) => {
@@ -184,10 +190,6 @@ fn main() {
         .unwrap();
 
     let _handle = log4rs::init_config(config).unwrap();
-
-
-
-    //
 
 
     let (tx, rx): (Sender<TemperatureRecord>, Receiver<TemperatureRecord>) = mpsc::channel();
