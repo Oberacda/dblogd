@@ -4,6 +4,8 @@ extern crate serde_json;
 extern crate log;
 extern crate log4rs;
 extern crate ctrlc;
+extern crate clap;
+
 
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{mpsc, Arc};
@@ -11,18 +13,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{thread, time, io};
 use std::net::UdpSocket;
 
-use log::LevelFilter;
-use log4rs::append::console::ConsoleAppender;
-use log4rs::append::file::FileAppender;
-use log4rs::encode::pattern::PatternEncoder;
-use log4rs::config::{Appender, Config, Logger, Root};
-
 use serde::{Serialize, Deserialize};
 
 use chrono::Utc;
 use postgres::{Connection, TlsMode};
 use std::thread::sleep;
 use std::process::exit;
+
+use clap::App;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -34,8 +32,24 @@ struct TemperatureRecord {
     humidity: f64
 }
 
-fn socket_thread(tx: Sender<TemperatureRecord>, thread_finished: Arc<AtomicBool>) {
-    let socket = match UdpSocket::bind("0.0.0.0:31454") {
+#[derive(Serialize, Deserialize, Debug)]
+struct DatabaseParameters {
+    hostname: String,
+    port: u32,
+    username: String,
+    password: String,
+    database: String
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SocketParameters {
+    address: String,
+    port: u32,
+}
+
+
+fn socket_thread(tx: Sender<TemperatureRecord>, thread_finished: Arc<AtomicBool>, params: SocketParameters) {
+    let socket: UdpSocket = match UdpSocket::bind(format!("{}:{}", params.address, params.port)) {
         Ok(socket) => socket,
         Err(err) => {
             log::error!(target: "dblogd::udp", "Could not open udp socket: \'{}\'", err);
@@ -120,7 +134,7 @@ fn socket_thread(tx: Sender<TemperatureRecord>, thread_finished: Arc<AtomicBool>
 }
 
 fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<AtomicBool>) {
-    let database_connection = match Connection::connect("postgresql://u_home_client:temperature@raspberry3.local:5432/home_dev?application_name=dblogd", TlsMode::None)
+    let database_connection: Connection = match Connection::connect("postgresql://u_home_client:temperature@raspberry3.local:5432/home_dev?application_name=dblogd", TlsMode::None)
         {
             Ok(conn) => conn,
             Err(err) => {
@@ -129,7 +143,7 @@ fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<AtomicB
                 return;
             }
         };
-
+    log::info!(target: "dblogd::db", "Database connection established!");
     let timeout = time::Duration::from_millis(100);
 
     while !thread_finished.load(Ordering::SeqCst) {
@@ -171,26 +185,18 @@ fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<AtomicB
 }
 
 fn main() {
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} - {t} - {T} - {m}{n}")))
-        .build();
-
-    let requests = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} - {t} - {T} - {m}{n}")))
-        .build("log/dblogd.log")
-        .unwrap();
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .appender(Appender::builder().build("file", Box::new(requests)))
-        .logger(Logger::builder().build("dblogd", LevelFilter::Info))
-        .logger(Logger::builder().build("dblogd::udp", LevelFilter::Info))
-        .logger(Logger::builder().build("dblogd::db", LevelFilter::Info))
-        .build(Root::builder().appenders(vec! ["stdout", "file"]).build(LevelFilter::Warn))
-        .unwrap();
-
-    let _handle = log4rs::init_config(config).unwrap();
-
+    let yaml = clap::load_yaml!("cli.yml");
+    let matches = App::from(yaml).get_matches();
+    if matches.is_present("config") {
+        let _config = matches.value_of("config");
+    }
+    match log4rs::init_file("resources/log.yml", Default::default()) {
+        Ok(_) => {},
+        Err(err) => {
+            log::error!("Could not create logger from yaml configuration: {}", err);
+            exit(-100);
+        }
+    };
 
     let (tx, rx): (Sender<TemperatureRecord>, Receiver<TemperatureRecord>) = mpsc::channel();
 
@@ -199,11 +205,15 @@ fn main() {
     let terminate_socket_thread = Arc::clone(&terminate_programm);
     let terminate_database_thread = Arc::clone(&terminate_programm);
 
+    let socket_parameters = SocketParameters {
+        address: String::from("0.0.0.0"),
+        port: 31454
+    };
 
     let socket_thread = match thread::Builder::new()
         .name("socket".to_string())
         .spawn(move || {
-            socket_thread(tx, terminate_socket_thread);
+            socket_thread(tx, terminate_socket_thread, socket_parameters);
         }) {
         Ok(socket_handle) => socket_handle,
         Err(err) => {

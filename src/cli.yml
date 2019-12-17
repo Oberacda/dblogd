@@ -1,0 +1,70 @@
+name: dblogd
+version: "0.0.1"
+author: David Oberacker <david.oberacker@gmail.com>
+about: Daemon logger facility that inserts Json Objects from IoT devices into a postgres database.
+args:
+  - config_file:
+      short: c
+      long: config
+      value_name: CONFIG_FILE
+      help: Configuration file location!
+      takes_value: true
+      conflicts_with:
+        - socket_ip_address
+        - socket_port
+        - db_ip_address
+        - db_port
+        - db_username
+        - db_password
+  - socket_ip_address:
+      short: i
+      long: s_ip
+      value_name: SOCKET_IP_ADDRESS
+      help: The ip address the socket should listen on.
+      takes_value: true
+  - socket_port:
+      short: p
+      long: s_port
+      value_name: SOCKET_PORT
+      help: The port the socket should listen on.
+      takes_value: true
+  - db_ip_address:
+      short: I
+      long: db_host
+      value_name: DATABASE_HOSTNAME
+      help: The ip address the database.
+      takes_value: true
+  - db_port:
+      short: P
+      long: db_port
+      value_name: DATABASE_PORT
+      help: The port the database.
+      takes_value: true
+  - db_username:
+      short: u
+      long: db_user
+      value_name: DATABASE_USERNAME
+      help: Username for database access!
+      takes_value: true
+  - db_password:
+      short: w
+      long: db_pwd
+      value_name: DATABASE_PASSWORD
+      help: Password for database access!
+      takes_value: true
+
+  - verbose:
+      short: v
+      multiple: true
+      help: Sets the level of verbosity
+groups:
+  - socket:
+      args:
+        - socket_ip_address
+        - socket_port
+  - database:
+      args:
+        - db_ip_address
+        - db_port
+        - db_username
+        - db_password
