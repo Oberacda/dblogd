@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time;
 
-use postgres::{Connection, TlsMode};
-use postgres_openssl::OpenSsl;
-use postgres_openssl::openssl::ssl::{SslConnector, SslFiletype, SslMethod};
+use postgres::Client;
+use postgres_openssl::MakeTlsConnector;
+use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 use serde::{Deserialize, Serialize};
 
 use crate::record::TemperatureRecord;
@@ -23,7 +23,7 @@ pub struct DatabaseParameters {
 }
 
 pub fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<AtomicBool>, connection_parameters: DatabaseParameters) {
-    let mut ssl_connection_builder = match SslConnector::builder(SslMethod::tls()) {
+    let mut ssl_connection_builder: openssl::ssl::SslConnectorBuilder = match SslConnector::builder(SslMethod::tls()) {
         Ok(builder) => builder,
         Err(err) => {
             log::error!(target: "dblogd::db", "Could not create ssl connection builder: \'{}\'", err);
@@ -31,6 +31,8 @@ pub fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<Ato
             return;
         }
     };
+
+    ssl_connection_builder.set_verify(SslVerifyMode::NONE);
 
     match ssl_connection_builder.set_ca_file(connection_parameters.server_ca_path) {
         Ok(_) => {}
@@ -59,12 +61,9 @@ pub fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<Ato
         }
     };
 
-    let mut negotiator: OpenSsl = OpenSsl::from(ssl_connection_builder.build());
+    let tls_connector = MakeTlsConnector::new(ssl_connection_builder.build());
 
-    //TODO: Remove once the hostname verification can be ensured!
-    negotiator.danger_disable_hostname_verification(true);
-
-    let postgres_connection_string = format!("postgresql://{}:{}@{}:{}/{}?application_name=dblogd",
+    let postgres_connection_string = format!("user={} password={} host={} port={} dbname={} application_name=dblogd",
                                              connection_parameters.username,
                                              connection_parameters.password,
                                              connection_parameters.hostname,
@@ -72,7 +71,7 @@ pub fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<Ato
                                              connection_parameters.database);
 
 
-    let database_connection: Connection = match Connection::connect(postgres_connection_string, TlsMode::Require(&negotiator))
+    let mut database_connection: Client = match Client::connect(postgres_connection_string.as_str(), tls_connector)
         {
             Ok(conn) => conn,
             Err(err) => {
@@ -100,7 +99,14 @@ pub fn database_thread(rx: Receiver<TemperatureRecord>, thread_finished: Arc<Ato
             }
         };
 
-        let new_id: i64 = probe_rows.get(0).get("id");
+        let new_id: i64 = match probe_rows.get(0) {
+            Some(row) => row.get("id"),
+            None => {
+                log::warn!(target: "dblog::db", "Could not get index of insert probe from database");
+                continue;
+            }
+        };
+
         temperature_record.id = new_id;
 
         match database_connection.execute("INSERT INTO sensors.temperature (record_id, celsius) VALUES ($1, $2)",
