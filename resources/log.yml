@@ -45,9 +45,16 @@ loggers:
       - rolling_log_file
     additive: false
 
-  dblogd::udp:
+  dblogd::socket:
     level: info
     appenders:
       - stdout
       - rolling_log_file
     additive: false
+
+  dblogd::socket::tls:
+    level: info
+      appenders:
+        - stdout
+        - rolling_log_file
+      additive: false

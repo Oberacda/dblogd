@@ -1,43 +1,51 @@
-extern crate postgres;
+//! Crate to receive records from a tcp socket and insert them into a database.
+
 extern crate chrono;
-extern crate serde_json;
+extern crate clap;
+extern crate ctrlc;
 extern crate log;
 extern crate log4rs;
-extern crate ctrlc;
-extern crate clap;
+extern crate postgres;
+extern crate serde_json;
 
 
-use std::sync::mpsc::{Sender, Receiver};
-use std::sync::{mpsc, Arc};
-use std::sync::atomic::Ordering;
-use std::thread;
-
-use serde::{Serialize, Deserialize};
-
-use std::process::exit;
-
-use clap::App;
 use std::fs::File;
 use std::io::Read;
+use std::process::exit;
+use std::sync::{Arc, mpsc};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread;
 
-mod record;
+use clap::App;
+use serde::{Deserialize, Serialize};
+
+pub mod record;
 mod socket;
 mod database;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Configuration {
+/// Struct representing the configuration of the application.
+pub struct Configuration {
+    /// Parameters for the database part ot the app.
     database_connection_parameters: database::DatabaseParameters,
-    socket_connection_parameters: socket::SocketParameters
+    /// Parameters for the socket part of the app.
+    socket_connection_parameters: socket::TlsSocketParameters,
 }
 
-fn main() {
+/// Main function of the application.
+///
+/// It starts the database and socket threads.
+/// This function will await a close command from the user or run indefinitely.
+///
+pub fn main() {
     let cli_yaml = clap::load_yaml!("cli.yml");
     let matches = App::from(cli_yaml).get_matches();
     if matches.is_present("config") {
         let _config = matches.value_of("config");
     }
     match log4rs::init_file("resources/log.yml", Default::default()) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(err) => {
             log::error!("Could not create logger from yaml configuration: {}", err);
             exit(-100);
@@ -45,6 +53,7 @@ fn main() {
     };
 
     let (tx, rx): (Sender<record::TemperatureRecord>, Receiver<record::TemperatureRecord>) = mpsc::channel();
+    let socket_tx_channel = tx.clone();
 
     let terminate_programm = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let terminate_main_thread = Arc::clone(&terminate_programm);
@@ -60,8 +69,8 @@ fn main() {
     };
 
     let mut configuration_string = String::new();
-    match configuration_file.read_to_string(& mut configuration_string) {
-        Ok(_) => {},
+    match configuration_file.read_to_string(&mut configuration_string) {
+        Ok(_) => {}
         Err(err) => {
             log::error!(target: "dblogd", "Cannot read the configuration from file: \'{}\'", err);
             return;
@@ -81,7 +90,7 @@ fn main() {
     let socket_thread = match thread::Builder::new()
         .name("socket".to_string())
         .spawn(move || {
-            socket::socket_thread(tx, terminate_socket_thread, socket_configuration);
+            socket::thread_tcp_listener_socket(socket_tx_channel, terminate_socket_thread, socket_configuration);
         }) {
         Ok(socket_handle) => socket_handle,
         Err(err) => {
@@ -94,7 +103,7 @@ fn main() {
     let database_thread = match thread::Builder::new()
         .name("database".to_string())
         .spawn(move || {
-            database::database_thread(rx, terminate_database_thread,database_configuration);
+            database::database_thread(rx, terminate_database_thread, database_configuration);
         }) {
         Ok(socket_handle) => socket_handle,
         Err(err) => {
@@ -118,8 +127,8 @@ fn main() {
     match database_thread.join() {
         Ok(_) => log::debug!(target: "dblogd", "Joined database thread!"),
         Err(_) => {
-        log::error!(target: "dblogd", "Could not join the database thread!");
-        exit(301);
+            log::error!(target: "dblogd", "Could not join the database thread!");
+            exit(301);
         }
     };
 
