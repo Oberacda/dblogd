@@ -19,6 +19,15 @@ use std::thread;
 
 use clap::App;
 use serde::{Deserialize, Serialize};
+use log4rs::append::console::ConsoleAppender;
+use log4rs::append::rolling_file::RollingFileAppender;
+use log4rs::encode::pattern::PatternEncoder;
+use log4rs::append::rolling_file::policy::compound::CompoundPolicy;
+use log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger;
+use log4rs::append::rolling_file::policy::compound::roll::fixed_window::FixedWindowRoller;
+use log4rs::config::{Config, Logger, Appender, Root};
+use log::LevelFilter;
+use std::path::Path;
 
 pub mod record;
 mod socket;
@@ -31,6 +40,8 @@ pub struct Configuration {
     database_connection_parameters: database::DatabaseParameters,
     /// Parameters for the socket part of the app.
     socket_connection_parameters: socket::TlsSocketParameters,
+    /// Logging folder location.
+    logging_folder: String,
 }
 
 /// Main function of the application.
@@ -41,14 +52,107 @@ pub struct Configuration {
 pub fn main() {
     let cli_yaml = clap::load_yaml!("cli.yml");
     let matches = App::from(cli_yaml).get_matches();
-    if matches.is_present("config") {
-        let _config = matches.value_of("config");
-    }
-    match log4rs::init_file("resources/log.yml", Default::default()) {
+
+    let config_file_path_str = match matches.value_of("config_file") {
+        Some(config_file_path) => config_file_path,
+        None => {
+            println!("Requried argument \'config\' not found!");
+            exit(104);
+        }
+    };
+    let config_file_path = Path::new(config_file_path_str);
+    let config_file_path_canon = match config_file_path.canonicalize() {
+        Ok(path) => path,
+        Err(err) => {
+            println!("Cannot find the configuration path: \'{}\'", err);
+            exit(105);
+        }
+    };
+
+    let mut configuration_file = match File::open(config_file_path_canon) {
+        Ok(file) => file,
+        Err(err) => {
+            println!("Cannot open the configuration file: \'{}\'", err);
+            return;
+        }
+    };
+
+    let mut configuration_string = String::new();
+    match configuration_file.read_to_string(&mut configuration_string) {
         Ok(_) => {}
         Err(err) => {
-            log::error!("Could not create logger from yaml configuration: {}", err);
-            exit(-100);
+            println!("Cannot read the configuration from file: \'{}\'", err);
+            return;
+        }
+    };
+
+    let configuration = match serde_yaml::from_str::<Configuration>(configuration_string.as_str()) {
+        Ok(res) => res,
+        Err(err) => {
+            println!("Cannot deserialize the configuration: \'{}\'", err);
+            return;
+        }
+    };
+
+    let rolling_logger_file = format!("{}/dblogd.log", configuration.logging_folder);
+    let rolling_logger_file_pattern = format!("{}/dblogd.{}.log", configuration.logging_folder, "{}");
+
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} - {t} - {T} - {m}{n}"))).build();
+    let rolling_log_file = match RollingFileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S %Z)(utc)} - {h({l})} - {t} - {T} - {m}{n}")))
+        .build(
+            rolling_logger_file.as_str(),
+            Box::new(CompoundPolicy::new(
+                Box::new(SizeTrigger::new(1000000)),
+                Box::new(FixedWindowRoller::builder()
+                    .base(1)
+                    .build(rolling_logger_file_pattern.as_str(), 5).unwrap()
+                    )
+                )
+            )
+        ) {
+        Ok(logger) => logger,
+        Err(err) => {
+            println!("Could not create rolling file logger: \'{}\'", err);
+            exit(101);
+        }
+    };
+
+    let log_config = match Config::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(Appender::builder().build("rolling_log_file", Box::new(rolling_log_file)))
+        .logger(Logger::builder()
+            .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
+            .additive(false)
+            .build("dblogd::db", LevelFilter::Info))
+        .logger(Logger::builder()
+            .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
+            .additive(false)
+            .build("dblogd::socket", LevelFilter::Info))
+        .logger(Logger::builder()
+            .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
+            .additive(false)
+            .build("dblogd::socket::tls", LevelFilter::Info))
+        .logger(Logger::builder()
+            .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
+            .additive(false)
+            .build("dblogd", LevelFilter::Info))
+        .build(Root::builder()
+            .appender("stdout")
+            .build(LevelFilter::Warn)) {
+        Ok(config) => config,
+        Err(err) => {
+            println!("{}", err);
+            exit(102);
+        }
+    };
+
+    match log4rs::init_config(log_config) {
+        Ok(_) => {},
+        Err(err) => {
+            println!("Could not initialize logger: \'{}\'", err);
+            exit(103);
         }
     };
 
@@ -59,32 +163,6 @@ pub fn main() {
     let terminate_main_thread = Arc::clone(&terminate_programm);
     let terminate_socket_thread = Arc::clone(&terminate_programm);
     let terminate_database_thread = Arc::clone(&terminate_programm);
-
-    let mut configuration_file = match File::open("resources/dblogd.yml") {
-        Ok(file) => file,
-        Err(err) => {
-            log::error!(target: "dblogd", "Cannot open the configuration file: \'{}\'", err);
-            return;
-        }
-    };
-
-    let mut configuration_string = String::new();
-    match configuration_file.read_to_string(&mut configuration_string) {
-        Ok(_) => {}
-        Err(err) => {
-            log::error!(target: "dblogd", "Cannot read the configuration from file: \'{}\'", err);
-            return;
-        }
-    };
-
-    let configuration = match serde_yaml::from_str::<Configuration>(configuration_string.as_str()) {
-        Ok(res) => res,
-        Err(err) => {
-            log::error!(target: "dblogd", "Cannot deserialize the configuration: \'{}\'", err);
-            return;
-        }
-    };
-
 
     let socket_configuration = configuration.socket_connection_parameters.clone();
     let socket_thread = match thread::Builder::new()
