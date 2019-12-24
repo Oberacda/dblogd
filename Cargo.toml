@@ -39,4 +39,6 @@ priority = "optional"
 assets = [
     ["target/release/dblogd", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/dblogd/README", "644"],
+    ["resources/dblogd.service", "etc/systemd/system/dblogd.service", "644"],
+    ["resources/dblogd.yml", "etc/dblogd/dblogd.yml", "644"]
 ]
