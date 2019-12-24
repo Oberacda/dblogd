@@ -27,3 +27,16 @@ log4rs = {version = "0.9", features = ["rolling_file_appender", "compound_policy
 ctrlc = { version = "3.1.3", features = ["termination"] }
 
 clap = {version = "~2.33.0", features = ["yaml"]}
+
+[package.metadata.deb]
+maintainer = "David Oberacker <david.oberacker@gmail.com>"
+copyright = "2019, David Oberacker <david.oberacker@gmail.com>"
+license-file = ["LICENSE", "0"]
+extended-description = """"""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/dblogd", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/dblogd/README", "644"],
+]
