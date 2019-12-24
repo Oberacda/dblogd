@@ -1,14 +1,21 @@
 name: dblogd
-version: "0.0.1"
+version: "0.9.0"
 author: David Oberacker <david.oberacker@gmail.com>
 about: Daemon logger facility that inserts Json Objects from IoT devices into a postgres database.
+
+settings:
+  - ColoredHelp
+  - ColorAlways
+
 args:
   - config_file:
       short: c
       long: config
       value_name: CONFIG_FILE
-      help: Configuration file location!
+      help: Location of the configuration file!
+      long_help: Path to the configuration file used in the app. This file should contain all the information required for the dblogd app.
       takes_value: true
+      required: true
   - verbose:
       short: v
       multiple: true
