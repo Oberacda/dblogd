@@ -1,7 +1,7 @@
 name: dblogd
-version: "0.9.0"
+version: "0.9.1"
 author: David Oberacker <david.oberacker@gmail.com>
-about: Daemon logger facility that inserts Json Objects from IoT devices into a postgres database.
+about: Daemon logger process that inserts Json Objects from IoT devices into a postgres database.
 
 settings:
   - ColoredHelp

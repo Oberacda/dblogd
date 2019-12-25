@@ -1,0 +1,19 @@
+.TH DBLOGD 1
+.SH NAME
+dblogd \- Daemon logger process that inserts Json Objects from IoT devices into a postgres database.
+.SH SYNOPSIS
+.B dblogd
+[\fB\-c\fR \fICONFIG_FILE\fR]
+[\fB\-\-config\fR \fICONFIG_FILE\fR]
+[\fB\-v]
+.SH DESCRIPTION
+.B dblogd
+Inserts valid json payloads received via a TCP socket into a known database.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config =\fICONFIG_FILE\fR
+Path to the configuration file used in the app.
+This file should contain all the information required for the dblogd app.
+.TP
+.BR \-v
+Sets the level of verbosity.
