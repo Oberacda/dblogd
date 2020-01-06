@@ -1,17 +1,14 @@
 ---
 database_connection_parameters:
-  hostname: postgres.test
+  hostname: 35.198.89.20
   port: 5432
   username: postgres
   password: test
-  database: posrgres
+  database: iot_dev
   server_ca_path: /etc/dblogd/certs/db/server-ca.full.pem
   client_cert_path: /etc/dblogd/certs/db/client-cert.pem
   client_key_path: /etc/dblogd/certs/db/client-key.pem
-socket_connection_parameters:
-  socket_params:
-    address: 0.0.0.0
-    port: 31454
-  pkcs12_identity_file: /etc/dblogd/certs/socket/socket_identity.pem
-  pkcs12_file_password: test
+mqtt_params:
+  address: raspberry3.local
+  port: 31454
 logging_folder: /var/log/dblogd

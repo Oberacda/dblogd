@@ -30,16 +30,16 @@ use log::LevelFilter;
 use std::path::Path;
 
 pub mod record;
-mod socket;
 mod database;
+mod mqtt_subscriber;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct representing the configuration of the application.
 pub struct Configuration {
     /// Parameters for the database part ot the app.
     database_connection_parameters: database::DatabaseParameters,
-    /// Parameters for the socket part of the app.
-    socket_connection_parameters: socket::TlsSocketParameters,
+    /// Parameters for the mqtt part of the app.
+    mqtt_params: mqtt_subscriber::MqttParams,
     /// Logging folder location.
     logging_folder: String,
 }
@@ -129,11 +129,7 @@ pub fn main() {
         .logger(Logger::builder()
             .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
             .additive(false)
-            .build("dblogd::socket", LevelFilter::Info))
-        .logger(Logger::builder()
-            .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
-            .additive(false)
-            .build("dblogd::socket::tls", LevelFilter::Info))
+            .build("dblogd::mqtt", LevelFilter::Info))
         .logger(Logger::builder()
             .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
             .additive(false)
@@ -157,22 +153,22 @@ pub fn main() {
     };
 
     let (tx, rx): (Sender<record::TemperatureRecord>, Receiver<record::TemperatureRecord>) = mpsc::channel();
-    let socket_tx_channel = tx.clone();
+    let mqtt_tx_channel = tx.clone();
 
     let terminate_programm = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let terminate_main_thread = Arc::clone(&terminate_programm);
-    let terminate_socket_thread = Arc::clone(&terminate_programm);
+    let terminate_mqtt_thread = Arc::clone(&terminate_programm);
     let terminate_database_thread = Arc::clone(&terminate_programm);
 
-    let socket_configuration = configuration.socket_connection_parameters.clone();
-    let socket_thread = match thread::Builder::new()
-        .name("socket".to_string())
+    let mqtt_configuration = configuration.mqtt_params.clone();
+    let mqtt_thread = match thread::Builder::new()
+        .name("mqtt".to_string())
         .spawn(move || {
-            socket::thread_tcp_listener_socket(socket_tx_channel, terminate_socket_thread, socket_configuration);
+            mqtt_subscriber::thread_mqtt(mqtt_tx_channel, terminate_mqtt_thread, mqtt_configuration);
         }) {
-        Ok(socket_handle) => socket_handle,
+        Ok(mqtt_handle) => mqtt_handle,
         Err(err) => {
-            log::error!(target: "dblogd", "Cannot start the udp socket thread: \'{}\'", err);
+            log::error!(target: "dblogd", "Cannot start the mqtt thread: \'{}\'", err);
             exit(201);
         }
     };
@@ -183,7 +179,7 @@ pub fn main() {
         .spawn(move || {
             database::database_thread(rx, terminate_database_thread, database_configuration);
         }) {
-        Ok(socket_handle) => socket_handle,
+        Ok(database_thread) => database_thread,
         Err(err) => {
             log::error!(target: "dblogd", "Cannot start the database thread: \'{}\'", err);
             exit(202);
@@ -195,10 +191,10 @@ pub fn main() {
         terminate_main_thread.store(true, Ordering::SeqCst);
     }).expect("Error setting Ctrl-C handler");
 
-    match socket_thread.join() {
-        Ok(_) => log::debug!(target: "dblogd", "Joined socket thread!"),
+    match mqtt_thread.join() {
+        Ok(_) => log::debug!(target: "dblogd", "Joined mqtt thread!"),
         Err(_) => {
-            log::error!(target: "dblogd", "Could not join the socket thread!");
+            log::error!(target: "dblogd", "Could not join the mqtt thread!");
             exit(301);
         }
     };
