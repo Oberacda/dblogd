@@ -152,7 +152,7 @@ pub fn main() {
         }
     };
 
-    let (tx, rx): (Sender<record::TemperatureRecord>, Receiver<record::TemperatureRecord>) = mpsc::channel();
+    let (tx, rx): (Sender<record::EnvironmentalRecord>, Receiver<record::EnvironmentalRecord>) = mpsc::channel();
     let mqtt_tx_channel = tx.clone();
 
     let terminate_programm = Arc::new(std::sync::atomic::AtomicBool::new(false));

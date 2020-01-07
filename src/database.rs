@@ -10,7 +10,7 @@ use postgres::Client;
 use postgres_openssl::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 
-use crate::record::TemperatureRecord;
+use crate::record::EnvironmentalRecord;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct modeling the parameters required for a database connection.
@@ -52,9 +52,9 @@ pub struct DatabaseParameters
 ///     Failing operations can be if a record cannot be inserted into the database.
 ///     The sensor with this name does not exist.
 ///
-fn insert_temperature_record(database_client: &mut Client, temperature_record: TemperatureRecord) -> Result<(), String>
+fn insert_temperature_record(database_client: &mut Client, env_record: EnvironmentalRecord) -> Result<(), String>
 {
-    let sensor_name_query_results = match database_client.query("SELECT sen.id FROM public.sensors sen WHERE sen.name = $1", &[&temperature_record.sensor_name]) {
+    let sensor_name_query_results = match database_client.query("SELECT sen.id FROM public.sensors sen WHERE sen.name = $1", &[&env_record.sensor_name]) {
         Ok(rows) => rows,
         Err(err) => {
             log::warn!(target: "dblogd::db", "Could not find sensor name in known sensors: \'{}\'", err);
@@ -70,7 +70,7 @@ fn insert_temperature_record(database_client: &mut Client, temperature_record: T
     let sensor_name_id: i64 = sensor_name_query_results.get(0).unwrap().get("id");
 
     let new_records_result = match database_client.query("INSERT INTO public.records (timestamp, sensor_id) VALUES ($1, $2) RETURNING id",
-                                                         &[&temperature_record.timestamp, &sensor_name_id]) {
+                                                         &[&env_record.timestamp, &sensor_name_id]) {
         Ok(rows) => rows,
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert record into database: \'{}\'", err);
@@ -86,7 +86,7 @@ fn insert_temperature_record(database_client: &mut Client, temperature_record: T
     let new_record_id: i64 = new_records_result.get(0).unwrap().get("id");
 
     match database_client.execute("INSERT INTO public.temperature (record_id, celsius) VALUES ($1, $2)",
-                                  &[&new_record_id, &temperature_record.celsius]) {
+                                  &[&new_record_id, &env_record.celsius]) {
         Ok(_) => {}
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert celsius value into database: \'{}\'", err);
@@ -95,7 +95,7 @@ fn insert_temperature_record(database_client: &mut Client, temperature_record: T
     };
 
     match database_client.execute("INSERT INTO public.humidity (record_id, humidity) VALUES ($1, $2)",
-                                  &[&new_record_id, &temperature_record.humidity]) {
+                                  &[&new_record_id, &env_record.humidity]) {
         Ok(_) => {}
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert celsius value into database: \'{}\'", err);
@@ -132,7 +132,7 @@ fn insert_temperature_record(database_client: &mut Client, temperature_record: T
 ///
 /// These errors will result in the method immediately exiting without raising a exception.
 ///
-pub fn database_thread(rx: Receiver<TemperatureRecord>, thread_finish: Arc<AtomicBool>, connection_parameters: DatabaseParameters)
+pub fn database_thread(rx: Receiver<EnvironmentalRecord>, thread_finish: Arc<AtomicBool>, connection_parameters: DatabaseParameters)
 {
     let mut ssl_connection_builder: openssl::ssl::SslConnectorBuilder = match SslConnector::builder(SslMethod::tls()) {
         Ok(builder) => builder,

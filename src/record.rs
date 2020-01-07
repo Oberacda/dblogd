@@ -3,8 +3,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-/// Struct representing a temperature and humidity record.
-pub struct TemperatureRecord
+/// Struct representing environmental data recorded from a sensor at a specific timestamp.
+pub struct EnvironmentalRecord
 {
     /// Timestamp the record was recorded.
     pub timestamp: chrono::DateTime<Utc>,
@@ -14,4 +14,14 @@ pub struct TemperatureRecord
     pub celsius: f64,
     /// Relative humidity value.
     pub humidity: f64,
+    /// Pressure value in kPa.
+    pub pressure: f64,
+    /// Illuminance value in lx.
+    pub illuminance: f64,
+    /// UVA index.
+    pub uva: f64,
+    /// UVB index.
+    pub uvb: f64,
+    /// UV Index:
+    pub uv: f64,
 }
