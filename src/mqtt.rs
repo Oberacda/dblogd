@@ -124,7 +124,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
     }
 
     while !mqtt_connected.load(Ordering::SeqCst) {
-        if  !thread_finish.load(Ordering::SeqCst) {
+        if  thread_finish.load(Ordering::SeqCst) {
             log::error!(target: "dblogd::mqtt", "Exiting mqtt loop");
             return;
         }
