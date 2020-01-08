@@ -123,6 +123,16 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         }
     }
 
+    let env_packages = match mqtt_client.subscribe(params.env_topic.as_ref(), params.qos)  {
+        Ok(res) => res,
+        Err(err) => {
+            log::error!(target: "dblogd::mqtt", "Unable to subscribe: \'{}\'", err);
+            thread_finish.store(true, Ordering::SeqCst);
+            return;
+        }
+    };
+
+
     while !mqtt_connected.load(Ordering::SeqCst) {
         if  thread_finish.load(Ordering::SeqCst) {
             log::error!(target: "dblogd::mqtt", "Exiting mqtt loop");
@@ -138,25 +148,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         };
     }
 
-    let env_packages = match mqtt_client.subscribe(params.env_topic.as_ref(), params.qos)  {
-        Ok(res) => res,
-        Err(err) => {
-            log::error!(target: "dblogd::mqtt", "Unable to subscribe: \'{}\'", err);
-            match mqtt_client.disconnect() {
-                Ok(_) => {
-                    log::info!(target: "dblogd::mqtt", "Disconnected mqtt client!");
-                }
-                Err(err) => {
-                    log::error!(target: "dblogd::mqtt", "Unable to disconnect: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                }
-            };
-            thread_finish.store(true, Ordering::SeqCst);
-            return;
-        }
-    };
-
-    mqtt_client_callbacks.on_message(move |_,msg| {
+    mqtt_client_callbacks.on_message( move |_,msg| {
         if ! msg.retained() { // not interested in any retained messages!
             if env_packages.matches(&msg) {
                 let recv_string = match std::str::from_utf8(msg.payload()) {
@@ -194,7 +186,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
                 log::trace!(target: "dblogd::mqtt", "Running mqtt loop!")
             },
             Err(err) => {
-                log::warn!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
+                log::trace!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
             }
         };
     }
