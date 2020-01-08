@@ -5,7 +5,7 @@ authors = ["David Oberacker <david.oberacker@gmail.com>"]
 description = "Daemon logger process that inserts envirnonement data from IoT devices into a postgres database."
 edition = "2018"
 readme = "Readme.md"
-license-file = "LICENSE"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -44,5 +44,5 @@ assets = [
     ["README.md", "usr/share/doc/dblogd/README", "644"],
     ["resources/dblogd.service", "etc/systemd/system/dblogd.service", "644"],
     ["resources/dblogd.yml", "etc/dblogd/dblogd.yml", "644"],
-    ["man/1/dblogd.1", "usr/share/man", "644"],
+    ["man/1/dblogd.1", "usr/share/man/1/dblogd.1", "644"],
 ]
