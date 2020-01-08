@@ -124,14 +124,16 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
     }
 
     while !mqtt_connected.load(Ordering::SeqCst) {
+        if  !thread_finish.load(Ordering::SeqCst) {
+            log::error!(target: "dblogd::mqtt", "Exiting mqtt loop");
+            return;
+        }
         match mqtt_client.do_loop(100) {
             Ok(_) => {
                 log::trace!(target: "dblogd::mqtt", "Running mqtt loop!")
             },
             Err(err) => {
                 log::error!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
             }
         };
     }
@@ -193,8 +195,6 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
             },
             Err(err) => {
                 log::warn!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
             }
         };
     }
