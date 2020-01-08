@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Parameters for the mqtt connection.
@@ -33,7 +34,16 @@ pub struct MqttParams
 
 pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBool>, params: MqttParams)
 {
-    let mqtt_client = mosq::Mosquitto::new("dblogd");
+    let current_unix_timestamp = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(n) => n.as_secs(),
+        Err(_) => {
+            log::error!(target: "dblogd::mqtt", "Invalid system time. Its before the UNIX_EPOCH");
+            thread_finish.store(true, Ordering::SeqCst);
+            return;
+        }
+    };
+
+    let mqtt_client = mosq::Mosquitto::new(format!("dblogd-{}", current_unix_timestamp).as_ref());
     mqtt_client.threaded();
     if params.tls_enable {
         let ca_path = match params.ca_path {
@@ -182,16 +192,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
                 log::trace!(target: "dblogd::mqtt", "Running mqtt loop!")
             },
             Err(err) => {
-                log::error!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
-                match mqtt_client.disconnect() {
-                    Ok(_) => {
-                        log::info!(target: "dblogd::mqtt", "Disconnected mqtt client!");
-                    }
-                    Err(err) => {
-                        log::error!(target: "dblogd::mqtt", "Unable to disconnect: \'{}\'", err);
-                        thread_finish.store(true, Ordering::SeqCst);
-                    }
-                };
+                log::warn!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
                 thread_finish.store(true, Ordering::SeqCst);
                 return;
             }
