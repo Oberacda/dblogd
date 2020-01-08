@@ -83,9 +83,26 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         };
     }
 
+
+
+    let mut mqtt_client_callbacks = mqtt_client.callbacks(());
+
+    mqtt_client_callbacks.on_connect( | _, code| {
+        match code {
+            0 => {
+                log::info!(target: "dblogd::mqtt", "Connected to mqtt client!");
+            }
+            _ => {
+                log::error!(target: "dblogd::mqtt", "Can not connected to mqtt client!");
+                thread_finish.store(true, Ordering::SeqCst);
+                return;
+            }
+        }
+    });
+
     match mqtt_client.connect(params.address.as_ref(), params.port) {
         Ok(_) => {
-            log::info!(target: "dblogd::mqtt", "Connected to mqtt client!");
+            log::info!(target: "dblogd::mqtt", "Started connecting to mqtt client!");
         },
         Err(err) => {
             log::error!(target: "dblogd::mqtt", "Unable to connect: \'{}\'", err);
@@ -112,8 +129,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         }
     };
 
-    let mut mqtt_client_callbacks = mqtt_client.callbacks(());
-    mqtt_client_callbacks.on_message(|_,msg| {
+    mqtt_client_callbacks.on_message(move |_,msg| {
         if ! msg.retained() { // not interested in any retained messages!
             if env_packages.matches(&msg) {
                 let recv_string = match std::str::from_utf8(msg.payload()) {
@@ -139,6 +155,8 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
                         log::error!(target: "dblogd::mqtt", "Could not send message to database thread: \'{}\'", err);
                     }
                 };
+            } else {
+                log::warn!(target: "dblogd::mqtt", "Received invalid package on the channel!")
             }
         }
     });

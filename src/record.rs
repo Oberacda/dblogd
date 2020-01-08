@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 pub struct EnvironmentalRecord
 {
     /// Timestamp the record was recorded.
-    pub timestamp: chrono::DateTime<Utc>,
+    pub timestamp: u64,
     /// The name of the sensor that recorded the record.
     pub sensor_name: String,
     /// Temperature value in celsius.
-    pub celsius: f64,
+    pub temperature: f64,
     /// Relative humidity value.
     pub humidity: f64,
     /// Pressure value in kPa.
@@ -23,5 +23,5 @@ pub struct EnvironmentalRecord
     /// UVB index.
     pub uvb: f64,
     /// UV Index:
-    pub uv: f64,
+    pub uvIndex: f64,
 }

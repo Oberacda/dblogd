@@ -11,6 +11,8 @@ use postgres_openssl::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 
 use crate::record::EnvironmentalRecord;
+use std::time::{UNIX_EPOCH, Duration};
+use chrono::Utc;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct modeling the parameters required for a database connection.
@@ -54,7 +56,7 @@ pub struct DatabaseParameters
 ///
 fn insert_temperature_record(database_client: &mut Client, env_record: EnvironmentalRecord) -> Result<(), String>
 {
-    let sensor_name_query_results = match database_client.query("SELECT sen.id FROM public.sensors sen WHERE sen.name = $1", &[&env_record.sensor_name]) {
+    let sensor_name_query_results = match database_client.query("SELECT sen.id FROM public.sensor_name sen WHERE sen.name = $1", &[&env_record.sensor_name]) {
         Ok(rows) => rows,
         Err(err) => {
             log::warn!(target: "dblogd::db", "Could not find sensor name in known sensors: \'{}\'", err);
@@ -67,10 +69,12 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         return Err(String::from("Found non unique sensor name, please ensure database consistency!"));
     };
 
+    let timestamp_datetime = chrono::DateTime::<Utc>::from(UNIX_EPOCH + Duration::from_secs(env_record.timestamp));
+
     let sensor_name_id: i64 = sensor_name_query_results.get(0).unwrap().get("id");
 
     let new_records_result = match database_client.query("INSERT INTO public.records (timestamp, sensor_id) VALUES ($1, $2) RETURNING id",
-                                                         &[&env_record.timestamp, &sensor_name_id]) {
+                                                         &[&timestamp_datetime, &sensor_name_id]) {
         Ok(rows) => rows,
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert record into database: \'{}\'", err);
@@ -85,8 +89,8 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
 
     let new_record_id: i64 = new_records_result.get(0).unwrap().get("id");
 
-    match database_client.execute("INSERT INTO public.temperature (record_id, celsius) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.celsius]) {
+    match database_client.execute("INSERT INTO public.temperature (record_id, temperature) VALUES ($1, $2)",
+                                  &[&new_record_id, &env_record.temperature]) {
         Ok(_) => {}
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert celsius value into database: \'{}\'", err);
@@ -98,8 +102,53 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
                                   &[&new_record_id, &env_record.humidity]) {
         Ok(_) => {}
         Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert celsius value into database: \'{}\'", err);
-            return Err(String::from("Could not insert celsius value into database"));
+            log::warn!(target: "dblog::db", "Could not insert humidity value into database: \'{}\'", err);
+            return Err(String::from("Could not insert humidity value into database"));
+        }
+    };
+
+    match database_client.execute("INSERT INTO public.pressure (record_id, pressure) VALUES ($1, $2)",
+                                  &[&new_record_id, &env_record.pressure]) {
+        Ok(_) => {}
+        Err(err) => {
+            log::warn!(target: "dblog::db", "Could not insert pressure value into database: \'{}\'", err);
+            return Err(String::from("Could not insert pressure value into database"));
+        }
+    };
+
+    match database_client.execute("INSERT INTO public.illuminance (record_id, illuminance) VALUES ($1, $2)",
+                                  &[&new_record_id, &env_record.illuminance]) {
+        Ok(_) => {}
+        Err(err) => {
+            log::warn!(target: "dblog::db", "Could not insert illuminance value into database: \'{}\'", err);
+            return Err(String::from("Could not insert illuminance value into database"));
+        }
+    };
+
+    match database_client.execute("INSERT INTO public.uva (record_id, uva) VALUES ($1, $2)",
+                                  &[&new_record_id, &env_record.uva]) {
+        Ok(_) => {}
+        Err(err) => {
+            log::warn!(target: "dblog::db", "Could not insert uva value into database: \'{}\'", err);
+            return Err(String::from("Could not insert uva value into database"));
+        }
+    };
+
+    match database_client.execute("INSERT INTO public.uvb (record_id, uvb) VALUES ($1, $2)",
+                                  &[&new_record_id, &env_record.uvb]) {
+        Ok(_) => {}
+        Err(err) => {
+            log::warn!(target: "dblog::db", "Could not insert uvb value into database: \'{}\'", err);
+            return Err(String::from("Could not insert uvb value into database"));
+        }
+    };
+
+    match database_client.execute("INSERT INTO public.uv_index (record_id, uv_index) VALUES ($1, $2)",
+                                  &[&new_record_id, &env_record.uvIndex]) {
+        Ok(_) => {}
+        Err(err) => {
+            log::warn!(target: "dblog::db", "Could not insert uv_index value into database: \'{}\'", err);
+            return Err(String::from("Could not insert uv_index value into database"));
         }
     };
 
