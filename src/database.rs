@@ -11,8 +11,7 @@ use postgres_openssl::MakeTlsConnector;
 use serde::{Deserialize, Serialize};
 
 use crate::record::EnvironmentalRecord;
-use std::time::{UNIX_EPOCH, Duration};
-use chrono::Utc;
+use chrono::{Utc, Local, TimeZone, DateTime};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct modeling the parameters required for a database connection.
@@ -69,7 +68,9 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         return Err(String::from("Found non unique sensor name, please ensure database consistency!"));
     };
 
-    let timestamp_datetime = chrono::DateTime::<Utc>::from(UNIX_EPOCH + Duration::from_secs(env_record.timestamp));
+
+    let timestamp_datetime_local: DateTime<Local> = Local.timestamp(env_record.timestamp, 0);
+    let timestamp_datetime: DateTime<Utc> = DateTime::<Utc>::from(timestamp_datetime_local);
 
     let sensor_name_id: i64 = sensor_name_query_results.get(0).unwrap().get("id");
 
@@ -144,7 +145,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
     };
 
     match database_client.execute("INSERT INTO public.uv_index (record_id, uv_index) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.uvIndex]) {
+                                  &[&new_record_id, &env_record.uv_index]) {
         Ok(_) => {}
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert uv_index value into database: \'{}\'", err);

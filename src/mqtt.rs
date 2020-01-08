@@ -83,14 +83,16 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         };
     }
 
-
+    let mqtt_connected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mqtt_connected_callback = Arc::clone(&mqtt_connected);
 
     let mut mqtt_client_callbacks = mqtt_client.callbacks(());
 
-    mqtt_client_callbacks.on_connect( | _, code| {
+    mqtt_client_callbacks.on_connect(  | _, code| {
         match code {
             0 => {
                 log::info!(target: "dblogd::mqtt", "Connected to mqtt client!");
+                mqtt_connected_callback.store(true, Ordering::SeqCst);
             }
             _ => {
                 log::error!(target: "dblogd::mqtt", "Can not connected to mqtt client!");
@@ -111,13 +113,26 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         }
     }
 
+    while !mqtt_connected.load(Ordering::SeqCst) {
+        match mqtt_client.do_loop(100) {
+            Ok(_) => {
+                log::trace!(target: "dblogd::mqtt", "Running mqtt loop!")
+            },
+            Err(err) => {
+                log::error!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
+                thread_finish.store(true, Ordering::SeqCst);
+                return;
+            }
+        };
+    }
+
     let env_packages = match mqtt_client.subscribe(params.env_topic.as_ref(), params.qos)  {
         Ok(res) => res,
         Err(err) => {
             log::error!(target: "dblogd::mqtt", "Unable to subscribe: \'{}\'", err);
             match mqtt_client.disconnect() {
                 Ok(_) => {
-                    log::warn!(target: "dblogd::mqtt", "Disconnected mqtt client!");
+                    log::info!(target: "dblogd::mqtt", "Disconnected mqtt client!");
                 }
                 Err(err) => {
                     log::error!(target: "dblogd::mqtt", "Unable to disconnect: \'{}\'", err);
@@ -150,7 +165,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
                     }
                 };
                 match tx.send(json_buf_record) {
-                    Ok(_) => log::debug!(target: "dblogd::mqtt", "Send message to database thread!"),
+                    Ok(_) => log::trace!(target: "dblogd::mqtt", "Send message to database thread!"),
                     Err(err) => {
                         log::error!(target: "dblogd::mqtt", "Could not send message to database thread: \'{}\'", err);
                     }
@@ -161,17 +176,16 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
         }
     });
 
-    let timeout: i32 = 100;
     while !thread_finish.load(Ordering::SeqCst) {
-        match mqtt_client.do_loop(timeout) {
+        match mqtt_client.do_loop(100) {
             Ok(_) => {
-                log::debug!(target: "dblogd::mqtt", "Running mqtt loop!")
+                log::trace!(target: "dblogd::mqtt", "Running mqtt loop!")
             },
             Err(err) => {
                 log::error!(target: "dblogd::mqtt", "Unable to run mqtt loop: \'{}\'", err);
                 match mqtt_client.disconnect() {
                     Ok(_) => {
-                        log::warn!(target: "dblogd::mqtt", "Disconnected mqtt client!");
+                        log::info!(target: "dblogd::mqtt", "Disconnected mqtt client!");
                     }
                     Err(err) => {
                         log::error!(target: "dblogd::mqtt", "Unable to disconnect: \'{}\'", err);

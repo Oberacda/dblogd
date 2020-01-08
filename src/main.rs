@@ -31,7 +31,7 @@ use std::path::Path;
 
 pub mod record;
 mod database;
-mod mqtt_subscriber;
+mod mqtt;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct representing the configuration of the application.
@@ -39,7 +39,7 @@ pub struct Configuration {
     /// Parameters for the database part ot the app.
     database_connection_parameters: database::DatabaseParameters,
     /// Parameters for the mqtt part of the app.
-    mqtt_params: mqtt_subscriber::MqttParams,
+    mqtt_params: mqtt::MqttParams,
     /// Logging folder location.
     logging_folder: String,
 }
@@ -94,6 +94,14 @@ pub fn main() {
         }
     };
 
+    let logging_level = match matches.occurrences_of("verbose") {
+        0 => LevelFilter::Error,
+        1 => LevelFilter::Warn,
+        2 => LevelFilter::Info,
+        3 => LevelFilter::Debug,
+        _ => LevelFilter::Trace
+    };
+
     let rolling_logger_file = format!("{}/dblogd.log", configuration.logging_folder);
     let rolling_logger_file_pattern = format!("{}/dblogd.{}.log", configuration.logging_folder, "{}");
 
@@ -125,15 +133,15 @@ pub fn main() {
         .logger(Logger::builder()
             .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
             .additive(false)
-            .build("dblogd::db", LevelFilter::Info))
+            .build("dblogd::db", logging_level))
         .logger(Logger::builder()
             .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
             .additive(false)
-            .build("dblogd::mqtt", LevelFilter::Info))
+            .build("dblogd::mqtt", logging_level))
         .logger(Logger::builder()
             .appenders(&[String::from("stdout"), String::from("rolling_log_file")])
             .additive(false)
-            .build("dblogd", LevelFilter::Info))
+            .build("dblogd", logging_level))
         .build(Root::builder()
             .appender("stdout")
             .build(LevelFilter::Warn)) {
@@ -164,7 +172,7 @@ pub fn main() {
     let mqtt_thread = match thread::Builder::new()
         .name("mqtt".to_string())
         .spawn(move || {
-            mqtt_subscriber::thread_mqtt(mqtt_tx_channel, terminate_mqtt_thread, mqtt_configuration);
+            mqtt::thread_mqtt(mqtt_tx_channel, terminate_mqtt_thread, mqtt_configuration);
         }) {
         Ok(mqtt_handle) => mqtt_handle,
         Err(err) => {

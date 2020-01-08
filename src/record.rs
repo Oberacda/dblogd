@@ -1,13 +1,12 @@
 //! Module that contains all valid record types for this application.
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 /// Struct representing environmental data recorded from a sensor at a specific timestamp.
 pub struct EnvironmentalRecord
 {
-    /// Timestamp the record was recorded.
-    pub timestamp: u64,
+    /// Timestamp the record was recorded (unix timestamp).
+    pub timestamp: i64,
     /// The name of the sensor that recorded the record.
     pub sensor_name: String,
     /// Temperature value in celsius.
@@ -23,5 +22,5 @@ pub struct EnvironmentalRecord
     /// UVB index.
     pub uvb: f64,
     /// UV Index:
-    pub uvIndex: f64,
+    pub uv_index: f64,
 }
