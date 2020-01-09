@@ -11,9 +11,13 @@ database_connection_parameters:
 mqtt_params:
   address: mqtt.test
   port: 1883
+  env_topic: home/env
+  qos: 0
   tls_enable: true
-  ca_path: /etc/dblogd/certs/mqtt/ca.pem
-  cert_path: /etc/dblogd/certs/mqtt/client-cert.pem
-  key_path: /etc/dblogd/certs/mqtt/client-key.pem
-  key_pass: pass
+  tls_params:
+    ca_path: /etc/dblogd/certs/mqtt/ca.pem
+    cert_path: /etc/dblogd/certs/mqtt/client-cert.pem
+    key_path: /etc/dblogd/certs/mqtt/client-key.pem
+    key_pass: pass
+  
 logging_folder: /var/log/dblogd

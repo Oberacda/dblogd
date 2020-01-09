@@ -7,8 +7,9 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=1
-User=pi
-ExecStart=/usr/bin/dblogd --config /etc/dblogd/dblogd.yml
+User=root
+Group=root
+ExecStart=/usr/bin/dblogd --config /etc/dblogd/dblogd.yml -v
 
 [Install]
 WantedBy=multi-user.target

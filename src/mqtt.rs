@@ -18,18 +18,24 @@ pub struct MqttParams
     pub port: u32,
     /// Enable tls encryption.
     pub tls_enable: bool,
-    /// The path to the CA certificate for TLS encryption.
-    pub ca_path: Option<String>,
-    /// The path to the certificate to use for TLS encryption.
-    pub cert_path: Option<String>,
-    /// The path to the key to use for TLS encryption.
-    pub key_path: Option<String>,
-    /// The password for the ssl private key.å
-    pub key_pass: Option<String>,
+    /// Optional TLS parameters for the mqtt connection.
+    pub tls_params: Option<MqttTlsParams>,
     /// Topic to subscribe to fr environmental data.
     pub env_topic: String,
     /// The QoS to use for the subscription.
     pub qos: u32,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+/// TLS parametes required for MQTT with TLS.
+pub struct MqttTlsParams {
+    /// The path to the CA certificate for TLS encryption.
+    pub ca_path: String,
+    /// The path to the certificate to use for TLS encryption.
+    pub cert_path: String,
+    /// The path to the key to use for TLS encryption.
+    pub key_path: String,
+    /// The password for the ssl private key.å
+    pub key_pass: String,
 }
 
 pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBool>, params: MqttParams)
@@ -46,42 +52,16 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
     let mqtt_client = mosq::Mosquitto::new(format!("dblogd-{}", current_unix_timestamp).as_ref());
     mqtt_client.threaded();
     if params.tls_enable {
-        let ca_path = match params.ca_path {
-            Some(ca_path) => ca_path,
+        let tls_params = match params.tls_params {
+            Some(tls_params) => tls_params,
             None => {
-                log::error!(target: "dblogd::mqtt", "TLS enabled but no CA file specified!");
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
-            }
-        };
-        let cert_path = match params.cert_path {
-            Some(cert_path) => cert_path,
-            None => {
-                log::error!(target: "dblogd::mqtt", "TLS enabled but no Certificate file specified!");
+                log::error!(target: "dblogd::mqtt", "TLS enabled but no TLS parameters specified!");
                 thread_finish.store(true, Ordering::SeqCst);
                 return;
             }
         };
 
-        let key_path = match params.key_path {
-            Some(key_path) => key_path,
-            None => {
-                log::error!(target: "dblogd::mqtt", "TLS enabled but no private key file specified!");
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
-            }
-        };
-
-        let key_pass = match params.key_pass {
-            Some(key_pass) => key_pass,
-            None => {
-                log::error!(target: "dblogd::mqtt", "TLS enabled but no private key password specified!");
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
-            }
-        };
-
-        match mqtt_client.tls_set(ca_path.as_str(), cert_path.as_str(), key_path.as_str(),Option::Some(key_pass.as_str())) {
+        match mqtt_client.tls_set(tls_params.ca_path.as_str(), tls_params.cert_path.as_str(), tls_params.key_path.as_str(),Option::Some(tls_params.key_pass.as_str())) {
             Ok(_) => {
                 log::debug!(target: "dblogd::mqtt", "Set tls parameters for connection!");
             },
