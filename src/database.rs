@@ -29,6 +29,15 @@ pub struct DatabaseParameters
     pub password: String,
     /// The database to open on the server.
     pub database: String,
+    /// Flag to enable tls for the database server connection.
+    pub tls_enable: bool,
+    /// Parameters for the tls connection to the database server.
+    pub tls_params: Option<DatabaseTlsParameters>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+/// Struct for the parameters required for a tls connection to the database.
+pub struct DatabaseTlsParameters {
     /// The path to the server certificate for TLS encryption.
     pub server_ca_path: String,
     /// The path to the client certificate for TLS encryption.
@@ -184,46 +193,6 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
 ///
 pub fn database_thread(rx: Receiver<EnvironmentalRecord>, thread_finish: Arc<AtomicBool>, connection_parameters: DatabaseParameters)
 {
-    let mut ssl_connection_builder: openssl::ssl::SslConnectorBuilder = match SslConnector::builder(SslMethod::tls()) {
-        Ok(builder) => builder,
-        Err(err) => {
-            log::error!(target: "dblogd::db", "Could not create ssl connection builder: \'{}\'", err);
-            thread_finish.store(true, Ordering::SeqCst);
-            return;
-        }
-    };
-
-    ssl_connection_builder.set_verify(SslVerifyMode::NONE);
-
-    match ssl_connection_builder.set_ca_file(connection_parameters.server_ca_path) {
-        Ok(_) => {}
-        Err(err) => {
-            log::error!(target: "dblogd::db", "Could not set ssl ca file: \'{}\'", err);
-            thread_finish.store(true, Ordering::SeqCst);
-            return;
-        }
-    };
-
-    match ssl_connection_builder.set_certificate_file(connection_parameters.client_cert_path, SslFiletype::PEM) {
-        Ok(_) => {}
-        Err(err) => {
-            log::error!(target: "dblogd::db", "Could not set ssl client cert file: \'{}\'", err);
-            thread_finish.store(true, Ordering::SeqCst);
-            return;
-        }
-    };
-
-    match ssl_connection_builder.set_private_key_file(connection_parameters.client_key_path, SslFiletype::PEM) {
-        Ok(_) => {}
-        Err(err) => {
-            log::error!(target: "dblogd::db", "Could not set ssl client key file: \'{}\'", err);
-            thread_finish.store(true, Ordering::SeqCst);
-            return;
-        }
-    };
-
-    let tls_connector = MakeTlsConnector::new(ssl_connection_builder.build());
-
     let postgres_connection_string = format!("user={} password={} host={} port={} dbname={} application_name=dblogd",
                                              connection_parameters.username,
                                              connection_parameters.password,
@@ -231,16 +200,78 @@ pub fn database_thread(rx: Receiver<EnvironmentalRecord>, thread_finish: Arc<Ato
                                              connection_parameters.port,
                                              connection_parameters.database);
 
+    let mut database_connection: Client = match connection_parameters.tls_enable {
+        true => {
+            let tls_params = match connection_parameters.tls_params {
+                Some(tls_params) => tls_params,
+                None => {
+                    log::error!(target: "dblogd::db", "TLS enabled but no TLS parameters specified!");
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
 
-    let mut database_connection: Client = match Client::connect(postgres_connection_string.as_str(), tls_connector)
-        {
-            Ok(conn) => conn,
-            Err(err) => {
-                log::error!(target: "dblogd::db", "Could not establish database connection: \'{}\'", err);
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
+            let mut ssl_connection_builder: openssl::ssl::SslConnectorBuilder = match SslConnector::builder(SslMethod::tls()) {
+                Ok(builder) => builder,
+                Err(err) => {
+                    log::error!(target: "dblogd::db", "Could not create ssl connection builder: \'{}\'", err);
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+        
+            ssl_connection_builder.set_verify(SslVerifyMode::NONE);
+        
+            match ssl_connection_builder.set_ca_file(tls_params.server_ca_path) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!(target: "dblogd::db", "Could not set ssl ca file: \'{}\'", err);
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+        
+            match ssl_connection_builder.set_certificate_file(tls_params.client_cert_path, SslFiletype::PEM) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!(target: "dblogd::db", "Could not set ssl client cert file: \'{}\'", err);
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+        
+            match ssl_connection_builder.set_private_key_file(tls_params.client_key_path, SslFiletype::PEM) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!(target: "dblogd::db", "Could not set ssl client key file: \'{}\'", err);
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
+            let tls_connector = MakeTlsConnector::new(ssl_connection_builder.build());
+            match Client::connect(postgres_connection_string.as_str(), tls_connector)
+            {
+                Ok(conn) => conn,
+                Err(err) => {
+                    log::error!(target: "dblogd::db", "Could not establish database connection: \'{}\'", err);
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
             }
-        };
+        },
+        false => {
+            match Client::connect(postgres_connection_string.as_str(), postgres::NoTls)
+            {
+                Ok(conn) => conn,
+                Err(err) => {
+                    log::error!(target: "dblogd::db", "Could not establish database connection: \'{}\'", err);
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            }
+        }
+    };
+     
     log::info!(target: "dblogd::db", "Database connection established!");
     let timeout = time::Duration::from_millis(100);
 

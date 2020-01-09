@@ -161,7 +161,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
     });
 
     while !thread_finish.load(Ordering::SeqCst) {
-        match mqtt_client.do_loop(100) {
+        match mqtt_client.do_loop(1000) {
             Ok(_) => {
                 log::trace!(target: "dblogd::mqtt", "Running mqtt loop!")
             },
