@@ -31,7 +31,7 @@ use std::path::Path;
 
 pub mod record;
 mod database;
-mod mqtt;
+mod mqtt_paho;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct representing the configuration of the application.
@@ -39,7 +39,7 @@ pub struct Configuration {
     /// Parameters for the database part ot the app.
     database_connection_parameters: database::DatabaseParameters,
     /// Parameters for the mqtt part of the app.
-    mqtt_params: mqtt::MqttParams,
+    mqtt_params: mqtt_paho::MqttParams,
     /// Logging folder location.
     logging_folder: String,
 }
@@ -172,7 +172,7 @@ pub fn main() {
     let mqtt_thread = match thread::Builder::new()
         .name("mqtt".to_string())
         .spawn(move || {
-            mqtt::thread_mqtt(mqtt_tx_channel, terminate_mqtt_thread, mqtt_configuration);
+            mqtt_paho::thread_mqtt(mqtt_tx_channel, terminate_mqtt_thread, mqtt_configuration);
         }) {
         Ok(mqtt_handle) => mqtt_handle,
         Err(err) => {
