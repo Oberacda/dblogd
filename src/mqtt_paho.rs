@@ -72,43 +72,49 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
             return;
         }
     };
-    mqtt_client.set_timeout(std::time::Duration::from_millis(100));
+    mqtt_client.set_timeout(std::time::Duration::from_millis(4000));
 
-    let mut connecttion_opts_builder = mqtt::ConnectOptionsBuilder::new();
-    connecttion_opts_builder.connect_timeout(time::Duration::from_millis(4000));
+    let connection_opts = match params.tls_enable {
+        true => {
+            let tls_params = match params.tls_params {
+                Some(tls_params) => tls_params,
+                None => {
+                    log::error!(target: "dblogd::mqtt", "TLS enabled but no TLS parameters specified!");
+                    thread_finish.store(true, Ordering::SeqCst);
+                    return;
+                }
+            };
 
-    if params.tls_enable {
-        let tls_params = match params.tls_params {
-            Some(tls_params) => tls_params,
-            None => {
-                log::error!(target: "dblogd::mqtt", "TLS enabled but no TLS parameters specified!");
-                thread_finish.store(true, Ordering::SeqCst);
-                return;
-            }
-        };
+            let ssl_options = match tls_params.key_pass {
+                Some(key_pass) => {
+                    mqtt::SslOptionsBuilder::new()
+                        .trust_store(tls_params.ca_path.as_ref())
+                        .key_store(tls_params.cert_path.as_ref())
+                        .private_key(tls_params.key_path.as_ref())
+                        .private_key_password(key_pass.as_ref())
+                        .finalize()
+                },
+                None => {
+                    mqtt::SslOptionsBuilder::new()
+                        .trust_store(tls_params.ca_path.as_ref())
+                        .key_store(tls_params.cert_path.as_ref())
+                        .private_key(tls_params.key_path.as_ref())
+                        .finalize()
+                }
+            };
+            mqtt::ConnectOptionsBuilder::new()
+                .connect_timeout(time::Duration::from_millis(4000))
+                .ssl_options(ssl_options)
+                .finalize()
+        },
+        false => {
+            mqtt::ConnectOptionsBuilder::new()
+                .connect_timeout(time::Duration::from_millis(4000))
+                .finalize()
+        }
+    };
 
-        let ssl_options = match tls_params.key_pass {
-            Some(key_pass) => {
-                mqtt::SslOptionsBuilder::new()
-                    .trust_store(tls_params.ca_path.as_ref())
-                    .key_store(tls_params.cert_path.as_ref())
-                    .private_key(tls_params.key_path.as_ref())
-                    .private_key_password(key_pass.as_ref())
-                    .finalize()
-            },
-            None => {
-                mqtt::SslOptionsBuilder::new()
-                    .trust_store(tls_params.ca_path.as_ref())
-                    .key_store(tls_params.cert_path.as_ref())
-                    .private_key(tls_params.key_path.as_ref())
-                    .finalize()
-            }
-        };
-
-        connecttion_opts_builder.ssl_options(ssl_options);
-    }
-
-    match mqtt_client.connect(connecttion_opts_builder.finalize()) {
+    match mqtt_client.connect(connection_opts) {
         Ok((str, status, conn)) => {
             log::info!(target: "dblogd::mqtt", "Mqtt client connected: \'{}\', \'{}\', \'{}\'", str, status, conn);
         },
