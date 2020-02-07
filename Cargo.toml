@@ -33,6 +33,7 @@ clap = {version = "~2.33.0", features = ["yaml"]}
 [dependencies.paho-mqtt]
 version = "0.6.0"
 default-features = false
+features = [ "build_bindgen", "ssl" ]
 
 [package.metadata.deb]
 maintainer = "David Oberacker <david.oberacker@gmail.com>"
