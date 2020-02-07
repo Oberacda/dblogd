@@ -5,9 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time;
 
-use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
-use postgres::Client;
-use postgres_openssl::MakeTlsConnector;
+use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::record::EnvironmentalRecord;
@@ -19,31 +17,10 @@ use chrono::{Utc, Local, TimeZone, DateTime};
 /// This includes SSL/TLS encryption.
 pub struct DatabaseParameters
 {
-    /// The hostname of the database server.
-    pub hostname: String,
-    /// The port for the database server.
-    pub port: u32,
-    /// The username to connect as.
-    pub username: String,
-    /// The password to connect with.
-    pub password: String,
-    /// The database to open on the server.
-    pub database: String,
-    /// Flag to enable tls for the database server connection.
-    pub tls_enable: bool,
-    /// Parameters for the tls connection to the database server.
-    pub tls_params: Option<DatabaseTlsParameters>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-/// Struct for the parameters required for a tls connection to the database.
-pub struct DatabaseTlsParameters {
-    /// The path to the server certificate for TLS encryption.
-    pub server_ca_path: String,
-    /// The path to the client certificate for TLS encryption.
-    pub client_cert_path: String,
-    /// The path to the client key for TLS encryption.
-    pub client_key_path: String,
+    /// The filename for the database file.
+    pub filename: String,
+    /// Should the database be created if it does not exitst already.
+    pub create_if_nonexistant: bool
 }
 
 /// Function to insert a temperature record into the database.
