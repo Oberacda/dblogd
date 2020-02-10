@@ -13,6 +13,19 @@ use serde::{Deserialize, Serialize};
 use crate::record::EnvironmentalRecord;
 use chrono::{Utc, Local, TimeZone, DateTime};
 
+static SQL_CREATE_DATABASE: &'static str = include_str!("sql/create_database.sql");
+
+static SQL_SELECT_SENSOR_ID: &'static str = include_str!("sql/select_sensor_id.sql");
+
+static SQL_INSERT_RECORD: &'static str = include_str!("sql/insert_record.sql");
+static SQL_INSERT_HUMIDITY: &'static str = include_str!("sql/insert_humidity.sql");
+static SQL_INSERT_ILLUMINANCE: &'static str = include_str!("sql/insert_illuminance.sql");
+static SQL_INSERT_PRESSURE: &'static str = include_str!("sql/insert_pressure.sql");
+static SQL_INSERT_TEMPERATURE: &'static str = include_str!("sql/insert_temperature.sql");
+static SQL_INSERT_UV_INDEX: &'static str = include_str!("sql/insert_uv_index.sql");
+static SQL_INSERT_UVA: &'static str = include_str!("sql/insert_uva.sql");
+static SQL_INSERT_UVB: &'static str = include_str!("sql/insert_uvb.sql");
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct modeling the parameters required for a database connection.
 ///
@@ -64,7 +77,7 @@ pub struct DatabaseTlsParameters {
 ///
 fn insert_temperature_record(database_client: &mut Client, env_record: EnvironmentalRecord) -> Result<(), String>
 {
-    let sensor_name_query_results = match database_client.query("SELECT sen.id FROM public.sensor_name sen WHERE sen.name = $1", &[&env_record.sensor_name]) {
+    let sensor_name_query_results = match database_client.query(SQL_SELECT_SENSOR_ID, &[&env_record.sensor_name]) {
         Ok(rows) => rows,
         Err(err) => {
             log::warn!(target: "dblogd::db", "Could not find sensor name in known sensors: \'{}\'", err);
@@ -83,7 +96,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
 
     let sensor_name_id: i64 = sensor_name_query_results.get(0).unwrap().get("id");
 
-    let new_records_result = match database_client.query("INSERT INTO public.records (timestamp, sensor_id) VALUES ($1, $2) RETURNING id",
+    let new_records_result = match database_client.query(SQL_INSERT_RECORD,
                                                          &[&timestamp_datetime, &sensor_name_id]) {
         Ok(rows) => rows,
         Err(err) => {
@@ -99,7 +112,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
 
     let new_record_id: i64 = new_records_result.get(0).unwrap().get("id");
 
-    match database_client.execute("INSERT INTO public.temperature (record_id, temperature) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_TEMPERATURE,
                                   &[&new_record_id, &env_record.temperature]) {
         Ok(_) => {}
         Err(err) => {
@@ -108,7 +121,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         }
     };
 
-    match database_client.execute("INSERT INTO public.humidity (record_id, humidity) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_HUMIDITY,
                                   &[&new_record_id, &env_record.humidity]) {
         Ok(_) => {}
         Err(err) => {
@@ -117,7 +130,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         }
     };
 
-    match database_client.execute("INSERT INTO public.pressure (record_id, pressure) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_PRESSURE,
                                   &[&new_record_id, &env_record.pressure]) {
         Ok(_) => {}
         Err(err) => {
@@ -126,7 +139,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         }
     };
 
-    match database_client.execute("INSERT INTO public.illuminance (record_id, illuminance) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_ILLUMINANCE,
                                   &[&new_record_id, &env_record.illuminance]) {
         Ok(_) => {}
         Err(err) => {
@@ -135,7 +148,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         }
     };
 
-    match database_client.execute("INSERT INTO public.uva (record_id, uva) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_UVA,
                                   &[&new_record_id, &env_record.uva]) {
         Ok(_) => {}
         Err(err) => {
@@ -144,7 +157,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         }
     };
 
-    match database_client.execute("INSERT INTO public.uvb (record_id, uvb) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_UVB,
                                   &[&new_record_id, &env_record.uvb]) {
         Ok(_) => {}
         Err(err) => {
@@ -153,7 +166,7 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
         }
     };
 
-    match database_client.execute("INSERT INTO public.uv_index (record_id, uv_index) VALUES ($1, $2)",
+    match database_client.execute(SQL_INSERT_UV_INDEX,
                                   &[&new_record_id, &env_record.uv_index]) {
         Ok(_) => {}
         Err(err) => {

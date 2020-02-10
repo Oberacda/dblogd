@@ -1,0 +1,1 @@
+INSERT INTO uva (record_id, uva) VALUES ($1, $2);

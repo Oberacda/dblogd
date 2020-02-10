@@ -1,0 +1,1 @@
+SELECT sen.id FROM sensor_name sen WHERE sen.name = $1;

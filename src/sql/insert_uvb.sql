@@ -1,0 +1,1 @@
+INSERT INTO uvb (record_id, uvb) VALUES ($1, $2);

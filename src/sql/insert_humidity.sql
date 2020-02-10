@@ -1,0 +1,1 @@
+INSERT INTO humidity (record_id, humidity) VALUES ($1, $2);

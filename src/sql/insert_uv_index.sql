@@ -1,0 +1,1 @@
+INSERT INTO uv_index (record_id, uv_index) VALUES ($1, $2);

@@ -1,0 +1,1 @@
+INSERT INTO records (timestamp, sensor_id) VALUES ($1, $2) RETURNING id;

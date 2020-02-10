@@ -1,0 +1,1 @@
+INSERT INTO illuminance (record_id, illuminance) VALUES ($1, $2);

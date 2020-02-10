@@ -1,0 +1,1 @@
+INSERT INTO pressure (record_id, pressure) VALUES ($1, $2);
