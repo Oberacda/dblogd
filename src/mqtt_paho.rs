@@ -160,7 +160,7 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
                     Ok(string) => String::from(string),
                     Err(err) => {
                         log::warn!(target: "dblogd::mqtt", "Socket received non UTF-8 data: \'{}\'", err);
-                        return;
+                        continue;
                     }
                 };
 
@@ -169,14 +169,16 @@ pub fn thread_mqtt(tx: Sender<EnvironmentalRecord>, thread_finish: Arc<AtomicBoo
                 let json_buf_record = match serde_json::from_str::<EnvironmentalRecord>(recv_data_str_trimmed) {
                     Ok(result) => result,
                     Err(err) => {
-                        log::error!(target: "dblogd::mqtt", "Received data cannot be deserialized via JSON: \'{}\'", err);
-                        return;
+                        log::warn!(target: "dblogd::mqtt", "Received data cannot be deserialized via JSON: \'{}\'", err);
+                        continue;
                     }
                 };
                 match tx.send(json_buf_record) {
                     Ok(_) => log::trace!(target: "dblogd::mqtt", "Send message to database thread!"),
                     Err(err) => {
                         log::error!(target: "dblogd::mqtt", "Could not send message to database thread: \'{}\'", err);
+                        thread_finish.store(true, Ordering::SeqCst);
+                        return;
                     }
                 };
             },

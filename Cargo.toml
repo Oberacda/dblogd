@@ -19,7 +19,9 @@ serde_yaml = "0.8"
 
 chrono =  { version = "0.4", features = ["serde"] }
 
-rusqlite = {version = "0.21.0", features = ["serde_json", ]
+db-key = "0.1.0"
+leveldb = "0.8.4"
+bincode = "1.2.1"
 
 log = "0.4"
 log4rs = {version = "0.9", features = ["rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
@@ -32,7 +34,7 @@ clap = {version = "~2.33.0", features = ["yaml"]}
 [dependencies.paho-mqtt]
 version = "0.6.0"
 default-features = false
-features = [ "build_bindgen", "ssl" ]
+features = [ "build_bindgen" ]
 
 [package.metadata.deb]
 maintainer = "David Oberacker <david.oberacker@gmail.com>"

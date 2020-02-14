@@ -5,7 +5,8 @@ extern crate clap;
 extern crate ctrlc;
 extern crate log;
 extern crate log4rs;
-extern crate postgres;
+extern crate leveldb;
+extern crate bincode;
 extern crate serde_json;
 
 

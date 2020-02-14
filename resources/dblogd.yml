@@ -1,21 +1,13 @@
 ---
 database_connection_parameters:
-  hostname: postgres.test
-  port: 5432
-  username: postgres
-  password: test
-  database: env
-  tls_enable: true
-  tls_params:
-    server_ca_path: /etc/dblogd/certs/db/ca.pem
-    client_cert_path: /etc/dblogd/certs/db/client-cert.pem
-    client_key_path: /etc/dblogd/certs/db/client-key.pem
+  filename: dblogd.db
+  create_if_nonexistent: true
 mqtt_params:
-  address: mqtt.test
+  address: localhost
   port: 1883
   env_topic: home/env
   qos: 0
-  tls_enable: true
+  tls_enable: false
   tls_params:
     ca_path: /etc/dblogd/certs/mqtt/ca.pem
     cert_path: /etc/dblogd/certs/mqtt/client-cert.pem

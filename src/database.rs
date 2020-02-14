@@ -5,11 +5,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time;
 
-use rusqlite::{params, Connection, Result};
+use bincode;
+
+use leveldb::database::Database;
+use leveldb::kv::KV;
+use leveldb::options::{Options,WriteOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::record::EnvironmentalRecord;
-use chrono::{Utc, Local, TimeZone, DateTime};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Struct modeling the parameters required for a database connection.
@@ -20,7 +23,7 @@ pub struct DatabaseParameters
     /// The filename for the database file.
     pub filename: String,
     /// Should the database be created if it does not exitst already.
-    pub create_if_nonexistant: bool
+    pub create_if_nonexistent: bool
 }
 
 /// Function to insert a temperature record into the database.
@@ -39,107 +42,28 @@ pub struct DatabaseParameters
 ///     Failing operations can be if a record cannot be inserted into the database.
 ///     The sensor with this name does not exist.
 ///
-fn insert_temperature_record(database_client: &mut Client, env_record: EnvironmentalRecord) -> Result<(), String>
+fn insert_temperature_record(database_con: &mut leveldb::database::Database<i32>, env_record: EnvironmentalRecord) -> Result<(), String>
 {
-    let sensor_name_query_results = match database_client.query("SELECT sen.id FROM public.sensor_name sen WHERE sen.name = $1", &[&env_record.sensor_name]) {
-        Ok(rows) => rows,
+    let write_opts = WriteOptions::new();
+    let serialized_data = match bincode::serialize(&env_record) {
+        Ok(res) => res,
         Err(err) => {
-            log::warn!(target: "dblogd::db", "Could not find sensor name in known sensors: \'{}\'", err);
-            return Err(String::from("Could not find sensor nama in known sensors!"));
+            log::warn!(target: "dblog::db", "Could not serialize record into binary data: \'{}\'", err);
+            return Err(String::from("Could not serialize record into binary data"));
         }
     };
 
-    if sensor_name_query_results.len() != 1 {
-        log::warn!(target: "dblogd::db", "Found non unique sensor name, please ensure database consistency!");
-        return Err(String::from("Found non unique sensor name, please ensure database consistency!"));
-    };
-
-
-    let timestamp_datetime_local: DateTime<Local> = Local.timestamp(env_record.timestamp, 0);
-    let timestamp_datetime: DateTime<Utc> = DateTime::<Utc>::from(timestamp_datetime_local);
-
-    let sensor_name_id: i64 = sensor_name_query_results.get(0).unwrap().get("id");
-
-    let new_records_result = match database_client.query("INSERT INTO public.records (timestamp, sensor_id) VALUES ($1, $2) RETURNING id",
-                                                         &[&timestamp_datetime, &sensor_name_id]) {
-        Ok(rows) => rows,
+    match database_con.put(write_opts, env_record.timestamp as i32,
+        &serialized_data[..]) 
+    {
+        Ok(_) => {
+            return Ok(());
+        },
         Err(err) => {
             log::warn!(target: "dblog::db", "Could not insert record into database: \'{}\'", err);
             return Err(String::from("Could not insert record into database"));
         }
-    };
-
-    if new_records_result.len() != 1 {
-        log::warn!(target: "dblogd::db", "Found non unique record id result, please ensure database consistency!");
-        return Err(String::from("Found non unique record id result, please ensure database consistency!"));
-    };
-
-    let new_record_id: i64 = new_records_result.get(0).unwrap().get("id");
-
-    match database_client.execute("INSERT INTO public.temperature (record_id, temperature) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.temperature]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert celsius value into database: \'{}\'", err);
-            return Err(String::from("Could not insert celsius value into database"));
-        }
-    };
-
-    match database_client.execute("INSERT INTO public.humidity (record_id, humidity) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.humidity]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert humidity value into database: \'{}\'", err);
-            return Err(String::from("Could not insert humidity value into database"));
-        }
-    };
-
-    match database_client.execute("INSERT INTO public.pressure (record_id, pressure) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.pressure]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert pressure value into database: \'{}\'", err);
-            return Err(String::from("Could not insert pressure value into database"));
-        }
-    };
-
-    match database_client.execute("INSERT INTO public.illuminance (record_id, illuminance) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.illuminance]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert illuminance value into database: \'{}\'", err);
-            return Err(String::from("Could not insert illuminance value into database"));
-        }
-    };
-
-    match database_client.execute("INSERT INTO public.uva (record_id, uva) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.uva]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert uva value into database: \'{}\'", err);
-            return Err(String::from("Could not insert uva value into database"));
-        }
-    };
-
-    match database_client.execute("INSERT INTO public.uvb (record_id, uvb) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.uvb]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert uvb value into database: \'{}\'", err);
-            return Err(String::from("Could not insert uvb value into database"));
-        }
-    };
-
-    match database_client.execute("INSERT INTO public.uv_index (record_id, uv_index) VALUES ($1, $2)",
-                                  &[&new_record_id, &env_record.uv_index]) {
-        Ok(_) => {}
-        Err(err) => {
-            log::warn!(target: "dblog::db", "Could not insert uv_index value into database: \'{}\'", err);
-            return Err(String::from("Could not insert uv_index value into database"));
-        }
-    };
-
-    Ok(())
+    }
 }
 
 /// Thread function for the database connection.
@@ -170,83 +94,17 @@ fn insert_temperature_record(database_client: &mut Client, env_record: Environme
 ///
 pub fn database_thread(rx: Receiver<EnvironmentalRecord>, thread_finish: Arc<AtomicBool>, connection_parameters: DatabaseParameters)
 {
-    let postgres_connection_string = format!("user={} password={} host={} port={} dbname={} application_name=dblogd",
-                                             connection_parameters.username,
-                                             connection_parameters.password,
-                                             connection_parameters.hostname,
-                                             connection_parameters.port,
-                                             connection_parameters.database);
+    let database_path = std::path::Path::new(&connection_parameters.filename);
 
-    let mut database_connection: Client = match connection_parameters.tls_enable {
-        true => {
-            let tls_params = match connection_parameters.tls_params {
-                Some(tls_params) => tls_params,
-                None => {
-                    log::error!(target: "dblogd::db", "TLS enabled but no TLS parameters specified!");
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-
-            let mut ssl_connection_builder: openssl::ssl::SslConnectorBuilder = match SslConnector::builder(SslMethod::tls()) {
-                Ok(builder) => builder,
-                Err(err) => {
-                    log::error!(target: "dblogd::db", "Could not create ssl connection builder: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-        
-            ssl_connection_builder.set_verify(SslVerifyMode::NONE);
-        
-            match ssl_connection_builder.set_ca_file(tls_params.server_ca_path) {
-                Ok(_) => {}
-                Err(err) => {
-                    log::error!(target: "dblogd::db", "Could not set ssl ca file: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-        
-            match ssl_connection_builder.set_certificate_file(tls_params.client_cert_path, SslFiletype::PEM) {
-                Ok(_) => {}
-                Err(err) => {
-                    log::error!(target: "dblogd::db", "Could not set ssl client cert file: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-        
-            match ssl_connection_builder.set_private_key_file(tls_params.client_key_path, SslFiletype::PEM) {
-                Ok(_) => {}
-                Err(err) => {
-                    log::error!(target: "dblogd::db", "Could not set ssl client key file: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            };
-            let tls_connector = MakeTlsConnector::new(ssl_connection_builder.build());
-            match Client::connect(postgres_connection_string.as_str(), tls_connector)
-            {
-                Ok(conn) => conn,
-                Err(err) => {
-                    log::error!(target: "dblogd::db", "Could not establish database connection: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            }
-        },
-        false => {
-            match Client::connect(postgres_connection_string.as_str(), postgres::NoTls)
-            {
-                Ok(conn) => conn,
-                Err(err) => {
-                    log::error!(target: "dblogd::db", "Could not establish database connection: \'{}\'", err);
-                    thread_finish.store(true, Ordering::SeqCst);
-                    return;
-                }
-            }
-        }
+    let mut options = Options::new();
+    options.create_if_missing = true;
+    let mut database_con = match Database::<i32>::open(database_path, options) {
+      Ok(db) => db,
+      Err(err) => {
+        log::error!(target: "dblogd::db", "Could not connect to database: \'{}\'", err);
+        thread_finish.store(true, Ordering::SeqCst);
+        return;
+      }
     };
      
     log::info!(target: "dblogd::db", "Database connection established!");
@@ -262,7 +120,7 @@ pub fn database_thread(rx: Receiver<EnvironmentalRecord>, thread_finish: Arc<Ato
             }
         };
 
-        match insert_temperature_record(&mut database_connection, temperature_record) {
+        match insert_temperature_record(&mut database_con, temperature_record) {
             Ok(_) => {}
             Err(err) => {
                 log::error!(target: "dblogd::db", "Database insert failed: \'{}\'", err);
