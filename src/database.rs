@@ -7,10 +7,14 @@ use std::time;
 
 use bincode;
 
+use byteorder::ByteOrder;
+use byteorder::BigEndian;
 use leveldb::database::Database;
 use leveldb::kv::KV;
 use leveldb::options::{Options,WriteOptions};
+use db_key;
 use serde::{Deserialize, Serialize};
+use chrono::Utc;
 
 use crate::record::EnvironmentalRecord;
 
@@ -25,6 +29,56 @@ pub struct DatabaseParameters
     /// Should the database be created if it does not exitst already.
     pub create_if_nonexistent: bool
 }
+
+struct TimestampKey {
+    milliseconds: [u8; 8]
+}
+
+impl<'a> std::convert::From<&'a chrono::DateTime<Utc>> for TimestampKey {
+    fn from(key: &'a chrono::DateTime<Utc>) -> Self {
+        let mut buf: [u8; 8] = [0; 8];
+        BigEndian::write_i64(&mut buf, key.timestamp_millis());
+        return TimestampKey {
+            milliseconds: buf
+        }
+    }
+}
+
+impl std::convert::From<i64> for TimestampKey {
+    fn from(value: i64) -> Self{
+        let mut buf: [u8; 8] = [0; 8];
+        BigEndian::write_i64(&mut buf, value);
+        return TimestampKey { 
+            milliseconds: buf
+        }
+    }
+}
+
+impl db_key::Key for TimestampKey {
+    fn from_u8(key: &[u8]) -> Self {
+        let mut buf: [u8; 8] = [0; 8];
+        buf.clone_from_slice(&key[..8]);
+        return TimestampKey { milliseconds: buf};
+    }
+
+    fn as_slice<T, F: Fn(&[u8]) -> T>(&self, f: F) -> T {
+        f(self.milliseconds.as_ref())
+    }
+
+}
+impl std::convert::From<&[u8]> for TimestampKey {
+    fn from(key: &[u8]) -> Self {
+        let mut buf: [u8; 8] = [0; 8];
+        buf.clone_from_slice(&key[..8]);
+        return TimestampKey { milliseconds: buf};
+    }
+}
+
+impl std::convert::AsRef<[u8]> for TimestampKey {
+    fn as_ref(&self) -> &[u8] {
+        return self.milliseconds.as_ref();
+    }
+} 
 
 /// Function to insert a temperature record into the database.
 ///
@@ -42,7 +96,7 @@ pub struct DatabaseParameters
 ///     Failing operations can be if a record cannot be inserted into the database.
 ///     The sensor with this name does not exist.
 ///
-fn insert_temperature_record(database_con: &mut leveldb::database::Database<i32>, env_record: EnvironmentalRecord) -> Result<(), String>
+fn insert_temperature_record(database_con: &mut leveldb::database::Database<TimestampKey>, env_record: EnvironmentalRecord) -> Result<(), String>
 {
     let write_opts = WriteOptions::new();
     let serialized_data = match bincode::serialize(&env_record) {
@@ -52,8 +106,8 @@ fn insert_temperature_record(database_con: &mut leveldb::database::Database<i32>
             return Err(String::from("Could not serialize record into binary data"));
         }
     };
-
-    match database_con.put(write_opts, env_record.timestamp as i32,
+    
+    match database_con.put(write_opts, TimestampKey::from(env_record.timestamp),
         &serialized_data[..]) 
     {
         Ok(_) => {
@@ -98,7 +152,7 @@ pub fn database_thread(rx: Receiver<EnvironmentalRecord>, thread_finish: Arc<Ato
 
     let mut options = Options::new();
     options.create_if_missing = true;
-    let mut database_con = match Database::<i32>::open(database_path, options) {
+    let mut database_con = match Database::<TimestampKey>::open(database_path, options) {
       Ok(db) => db,
       Err(err) => {
         log::error!(target: "dblogd::db", "Could not connect to database: \'{}\'", err);

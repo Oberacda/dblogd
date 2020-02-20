@@ -3,6 +3,7 @@
 extern crate chrono;
 extern crate clap;
 extern crate ctrlc;
+extern crate byteorder;
 extern crate log;
 extern crate log4rs;
 extern crate leveldb;
